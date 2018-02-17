@@ -1,4 +1,4 @@
-test, 1000, 0
-test2, 500, 250
-test3, 750, 300
-test4, 5000, 400
+powershell, 300, 0
+cmd, 200, 100
+system, 100, 500
+chrome, 100, 3000
