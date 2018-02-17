@@ -4,7 +4,7 @@ import sys
 import engine
 
 INPUT_FILE = "input.csv"
-CLOCK_SPEED = 3  # gigahertz
+CLOCK_SPEED = 1  # gigahertz
 POWER_CONSUMPTION = 15  # watts
 
 
@@ -30,7 +30,6 @@ def read_input_file():
                 continue
             input_list.append((name, cycles, arrival_time))
 
-    # input_list.sort(key=lambda process: process[2])
     return input_list
 
 
@@ -38,9 +37,12 @@ class CPU:
     def __init__(self, clock_speed):
         self.clock_speed = clock_speed
         self.free = True
-        self.current_time = 0
+        self.idle_time = 0
+        self.available_time = 0
         self.execution_time = 0
         self.power_consumption = 0
+        self.num_processes = 0
+        self.total_wait_time = 0
 
     def to_string(self):
         return str(self.clock_speed) + " GHz CPU object"
@@ -52,18 +54,6 @@ class CPU:
         return self.to_string()
 
 
-def get_fcfs_priority(fel, process):
-    return 1
-
-
-def get_sjf_priority(fel, process):
-    return process[1]
-
-
-def get_rr_priority(fel, process):
-    return 1
-
-
 def fcfs_handler(params):
     """
     Handles arrivals of processes and schedules them to be executed on the CPU using the FCFS algorithm.
@@ -71,46 +61,127 @@ def fcfs_handler(params):
     """
     fel = params[0]
     cpu = params[1]
-    name, cycles_rem, arrival_time = params[2]
+    process = params[2]
+    name, cycles_rem, arrival_time = process
 
-    if cpu.free:
-        cpu.free = False
+    event_data = cpu, process
+    timestamp = max(cpu.available_time, arrival_time)
+    if arrival_time > cpu.available_time:
+        cpu.idle_time += arrival_time - cpu.available_time
+    elif arrival_time < cpu.available_time:
+        cpu.total_wait_time += cpu.available_time - arrival_time
+    print("Scheduled process", name, "to run at t=", timestamp)
+    fel.schedule(engine.Event(event_data, process_handler), timestamp)
+    cpu.available_time += cycles_rem / cpu.clock_speed
 
-        execute_time = cycles_rem / cpu.clock_speed
-        cpu.execution_time += execute_time
-        cpu.power_consumption += execute_time * POWER_CONSUMPTION
+def sjf_handler(params):
+    """
+    Handles arrivals of processes and schedules them to be executed on the CPU using the SJF algorithm.
+    :param params: the parameters passed into the handler
+    """
+    fel = params[0]
+    cpu = params[1]
+    process = params[2]
+    name, cycles_rem, arrival_time = process
 
-        cpu.current_time += execute_time
+    event_data = cpu, process
+    timestamp = max(cpu.available_time, arrival_time)
+    if arrival_time > cpu.available_time:
+        cpu.idle_time += arrival_time - cpu.available_time
+    elif arrival_time < cpu.available_time:
+        cpu.total_wait_time += cpu.available_time - arrival_time
+    print("Scheduled process", name, "to run at t=", timestamp)
+    fel.schedule(engine.Event(event_data, process_handler), timestamp)
+    cpu.available_time += cycles_rem / cpu.clock_speed
 
 
+def rr_handler(params):
+    """
+    Handles arrivals of processes and schedules them to be executed on the CPU using the RR algorithm.
+    :param params: the parameters passed into the handler
+    """
+    fel = params[0]
+    cpu = params[1]
+    process = params[2]
+    name, cycles_rem, arrival_time = process
+
+    event_data = cpu, process
+    timestamp = max(cpu.available_time, arrival_time)
+    if arrival_time > cpu.available_time:
+        cpu.idle_time += arrival_time - cpu.available_time
+    elif arrival_time < cpu.available_time:
+        cpu.total_wait_time += cpu.available_time - arrival_time
+    # print("Scheduled process", name, "to run at t=", timestamp)
+    fel.schedule(engine.Event(event_data, process_handler), timestamp)
+    cpu.available_time += cycles_rem / cpu.clock_speed
 
 
 def process_handler(params):
     cpu = params[0]
-    name, cycles_rem = params[1]
+    name, cycles_rem, arrival_time = params[1]
 
     cpu.free = False
     execute_time = cycles_rem / cpu.clock_speed
     cpu.execution_time += execute_time
     cpu.power_consumption += execute_time * POWER_CONSUMPTION
+    cpu.num_processes -= 1
 
     print("Execeuted process", name, "in", "{0:.2f}".format(execute_time), "nanoseconds using", "{0:.2f}".format(cpu.power_consumption), "nanowatts.")
 
 
-def main_loop(processes, priority_generator):
+def fcfs_loop(processes):
     fel = engine.FEL()
     cpu = CPU(CLOCK_SPEED)
 
-
     for process in processes:
-        priority = priority_generator(fel, process)
-        event_data = cpu, process
-        event_handler = process_handler
-        fel.schedule(engine.Event(event_data, event_handler), priority)
+        name, cycles, arrival_time = process
+        event_data = fel, cpu, process
+        event_handler = fcfs_handler
+        fel.schedule(engine.Event(event_data, event_handler), arrival_time)
 
     engine.run_sim(fel)
-    print("All processes executed in", "{0:.2f}".format(cpu.execution_time), "nanoseconds and consumed", "{0:.2f}".format(cpu.power_consumption),
+    print("All processes executed in", "{0:.2f}".format(cpu.execution_time + cpu.idle_time), "nanoseconds and consumed",
+          "{0:.2f}".format(cpu.power_consumption),
           "nanowatts.\n")
+    print("CPU was idle for:", cpu.idle_time, "nanoseconds")
+    print("Total wait time:", cpu.total_wait_time, "nanoseconds")
+
+
+def sjf_loop(processes):
+    fel = engine.FEL()
+    cpu = CPU(CLOCK_SPEED)
+
+    for process in processes:
+        name, cycles, arrival_time = process
+        event_data = fel, cpu, process
+        event_handler = sjf_handler
+        fel.schedule(engine.Event(event_data, event_handler), cycles)
+
+    engine.run_sim(fel)
+    print("All processes executed in", "{0:.2f}".format(cpu.execution_time + cpu.idle_time), "nanoseconds and consumed",
+          "{0:.2f}".format(cpu.power_consumption),
+          "nanowatts.\n")
+    print("CPU was idle for:", cpu.idle_time, "nanoseconds")
+    print("Total wait time:", cpu.total_wait_time, "nanoseconds")
+
+
+def rr_loop(processes):
+    fel = engine.FEL()
+    cpu = CPU(CLOCK_SPEED)
+
+    for process in processes:
+        name, cycles, arrival_time = process
+        event_data = fel, cpu, process
+        event_handler = rr_handler
+        fel.schedule(engine.Event(event_data, event_handler), arrival_time)
+
+    engine.run_sim(fel)
+    print("All processes executed in", "{0:.2f}".format(cpu.execution_time + cpu.idle_time),
+          "nanoseconds and consumed",
+          "{0:.2f}".format(cpu.power_consumption),
+          "nanowatts.\n")
+    print("CPU was idle for:", cpu.idle_time, "nanoseconds")
+    print("Total wait time:", cpu.total_wait_time, "nanoseconds")
 
 
 def main():
@@ -138,13 +209,13 @@ def main():
 
     if fcfs:
         print("Executing using First Come First Serve (FCFS) scheduling.")
-        main_loop(processes, get_fcfs_priority)
-    # if sjf:
-    #     print("Executing using Shortest Job First (SJF) scheduling.")
-    #     main_loop(processes, get_sjf_priority)
-    # if rr:
-    #     print("Executing using Round Robin (RR) scheduling.")
-    #     main_loop(processes, get_rr_priority)
+        fcfs_loop(processes)
+    if sjf:
+        print("Executing using Shortest Job First (SJF) scheduling.")
+        sjf_loop(processes)
+    if rr:
+        print("Executing using Round Robin (RR) scheduling.")
+        rr_loop(processes)
 
 
 main()
