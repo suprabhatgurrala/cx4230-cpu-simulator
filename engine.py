@@ -22,8 +22,7 @@ class Event:
         self.event_handler(self.event_data)
 
     def to_string(self):
-        return "Event object with data" + str(self.event_data) + " at " + time.strftime("%H:%M:%S",
-                                                                                        time.localtime(self.timestamp))
+        return "Event object "#with data" + str(self.event_data)   + " at " + time.strftime("%H:%M:%S", time.localtime(self.timestamp))
 
     def __str__(self):
         return self.to_string()
@@ -64,6 +63,22 @@ class FEL:
 
     def __init__(self):
         self.priority_queue = []
+
+    def to_string(self):
+        string = "["
+
+        for event, priority in self.priority_queue:
+            string += "{ " + str(event) + ", " + str(priority) + " },"
+
+        string += "]"
+
+        return string
+
+    def __str__(self):
+        return self.to_string()
+
+    def __repr__(self):
+        return self.to_string()
 
 
 def run_sim(fel):
