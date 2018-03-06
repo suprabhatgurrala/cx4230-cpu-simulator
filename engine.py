@@ -51,7 +51,8 @@ class FEL:
         Returns the item at the front of the FEL without removing it.
         :return: the item at the front of the FEL
         """
-        return self.priority_queue[0]
+        if not self.is_empty():
+            return self.priority_queue[0]
 
     def delete(self, event):
         """
@@ -95,5 +96,5 @@ def run_sim(fel):
     """
     while not fel.is_empty():
         event, timestamp = fel.remove()
-        event.handle()
         fel.now = timestamp
+        event.handle()
