@@ -40,11 +40,8 @@ class CPU:
     def __init__(self, clock_speed):
         self.clock_speed = clock_speed
         self.free = True
-        self.idle_time = 0
-        self.available_time = 0
         self.execution_time = 0
         self.power_consumption = 0
-        self.num_processes = 0
         self.total_wait_time = 0
 
     def to_string(self):
@@ -78,14 +75,12 @@ def fcfs_scheduler(params):
     else:
         # CPU is not free, thus the next event is an execute event. Schedule an execute when the CPU will be free.
         # Update waiting time here
-
-        next_event, timestamp = fel.peek()
-
-        wait_time = timestamp - arrival_time
+        next_event, next_timestamp = fel.peek()
+        wait_time = next_timestamp - arrival_time
         cpu.total_wait_time += wait_time
         if next_event.type == EXECUTE_EVENT_TYPE:
-            fel.schedule(event, timestamp + runtime)
-            print("Scheduled process", p_name, "to run at t =", timestamp)
+            fel.schedule(event, next_timestamp + runtime)
+            print("Scheduled process", p_name, "to run at t =", next_timestamp)
         else:
             print("Something is wrong.")
 
@@ -101,11 +96,24 @@ def process_handler(params):
     execute_time = cycles_rem / cpu.clock_speed
     cpu.execution_time += execute_time
     cpu.power_consumption += execute_time * POWER_CONSUMPTION
-    cpu.num_processes -= 1
     cpu.free = True
 
     print("Execeuted process", name, "in", "{0:.2f}".format(execute_time), "nanoseconds using", "{0:.2f}".format(execute_time * POWER_CONSUMPTION), "nanowatts.")
 
+
+def input_scheduler(processes, scheduler):
+    fel = engine.FEL()
+    cpu = CPU(CLOCK_SPEED)
+    for process in processes:
+        p_name, cycles, arrival_time = process
+        event_data = (fel, cpu, process)
+        fel.schedule(engine.Event(event_data, fcfs_scheduler, SCHEDULE_EVENT_TYPE, name=p_name), arrival_time)
+    engine.run_sim(fel)
+
+    print("Total wait time:", "{0:.2f}".format(cpu.total_wait_time), "nanoseconds")
+    print("Total idle time:", "{0:.2f}".format(fel.now - cpu.execution_time), "nanoseconds")  # Needs to be calculated
+    print("Total execution time:", "{0:.2f}".format(fel.now), "nanoseconds")
+    print("Total power consumption:", "{0:.2f}".format(cpu.power_consumption), "nanowatts")
 
 def main():
     processes = read_input_file()
@@ -130,26 +138,15 @@ def main():
     else:
         "Too many arguments. Args must be -f, -s, or -r if provided."
 
-    fel = engine.FEL()
-    cpu = CPU(CLOCK_SPEED)
-
     if fcfs:
         print("Executing using First Come First Serve (FCFS) scheduling.")
-        for process in processes:
-            p_name, cycles, arrival_time = process
-            event_data = (fel, cpu, process)
-            fel.schedule(engine.Event(event_data, fcfs_scheduler, SCHEDULE_EVENT_TYPE, name=p_name), arrival_time)
-
+        input_scheduler(processes, fcfs_scheduler)
     if sjf:
         print("Executing using Shortest Job First (SJF) scheduling.")
         pass
     if rr:
         print("Executing using Round Robin (RR) scheduling.")
         pass
-    engine.run_sim(fel)
-    print("Total wait time:", "{0:.2f}".format(cpu.total_wait_time), "nanoseconds")
-    print("Total idle time:", "{0:.2f}".format(cpu.idle_time), "nanoseconds")  # Needs to be calculated
-    print("Total execution time:", "{0:.2f}".format(cpu.execution_time), "nanoseconds")
-    print("Total power consumption:", "{0:.2f}".format(cpu.power_consumption), "nanowatts")
+
 
 main()
