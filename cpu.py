@@ -44,7 +44,17 @@ class CPU:
         self.power_consumption = 0
         self.total_wait_time = 0
         self.available_time = 0
-        self.waiting_processes = 0
+        self.waiting_processes = []
+
+    def add_waiting_process(self, process, priority):
+        self.waiting_processes.append((process, priority))
+        self.waiting_processes.sort(key=lambda pair: pair[1])
+
+    def remove_waiting_process(self):
+        return self.waiting_processes.pop(0)
+
+    def num_waiting_processes(self):
+        return len(self.waiting_processes)
 
     def to_string(self):
         return str(self.clock_speed) + " GHz CPU object"
@@ -59,32 +69,51 @@ class CPU:
 def fcfs_scheduler(params):
     """
     Handles arrivals of processes and schedules them to be executed on the CPU using the FCFS algorithm.
-    :param params: the parameters passed into the handler
+    :param params: the parameters passed into the handler. Expects a tuple of (fel, cpu, process)
     """
     fel = params[0]
     cpu = params[1]
     process = params[2]
     p_name, cycles_rem, arrival_time = process
 
-    event_data = cpu, process
-    runtime = cycles_rem / cpu.clock_speed
-    event = engine.Event(event_data, process_handler, EXECUTE_EVENT_TYPE, name=p_name)
-
     if cpu.free:
         cpu.free = False
+        next_event_data = params
+        runtime = cycles_rem / cpu.clock_speed
+        event = engine.Event(next_event_data, process_handler, EXECUTE_EVENT_TYPE, name=p_name)
         fel.schedule(event, fel.now + runtime)
         cpu.available_time = fel.now + runtime
         print("Scheduled process", p_name, "to run at t =", fel.now)
     else:
-        # CPU is not free. Schedule an execute when the CPU will be free.
-        # Update waiting time here
-        cpu.waiting_processes += 1
+        # CPU is not free or there are pending processes. Schedule the next deserving process for execution.
+        cpu.add_waiting_process(process, arrival_time)
         wait_time = cpu.available_time - arrival_time
-        cpu.total_wait_time += wait_time * cpu.waiting_processes
+        cpu.total_wait_time += wait_time * cpu.num_waiting_processes()
 
-        fel.schedule(event, cpu.available_time + runtime)
-        cpu.available_time += runtime
-        print("Scheduled process", p_name, "to run at t =", cpu.available_time)
+
+def sjf_scheduler(params):
+    """
+    Handles arrivals of processes and schedules them to be executed on the CPU using the SJF algorithm
+    :param params: the parameters passed into the handler. Expects a tuple of (fel, cpu, process)
+    """
+    fel = params[0]
+    cpu = params[1]
+    process = params[2]
+    p_name, cycles_rem, arrival_time = process
+
+    if cpu.free:
+        cpu.free = False
+        next_event_data = params
+        runtime = cycles_rem / cpu.clock_speed
+        event = engine.Event(next_event_data, process_handler, EXECUTE_EVENT_TYPE, name=p_name)
+        fel.schedule(event, fel.now + runtime)
+        cpu.available_time = fel.now + runtime
+        print("Scheduled process", p_name, "to run at t =", fel.now)
+    else:
+        # CPU is not free or there are pending processes. Schedule the next deserving process for execution.
+        cpu.add_waiting_process(process, cycles_rem)
+        wait_time = cpu.available_time - arrival_time
+        cpu.total_wait_time += wait_time * cpu.num_waiting_processes()
 
 
 def process_handler(params):
@@ -92,17 +121,28 @@ def process_handler(params):
     Event handler to execute a process on the CPU
     :param params: the parameters passed into the handler. Expects a tuple of (CPU object, process)
     """
-    cpu = params[0]
-    name, cycles_rem, arrival_time = params[1]
+    fel = params[0]
+    cpu = params[1]
+    process = params[2]
+    p_name, cycles_rem, arrival_time = process
 
     execute_time = cycles_rem / cpu.clock_speed
     cpu.execution_time += execute_time
     cpu.power_consumption += execute_time * POWER_CONSUMPTION
     cpu.free = True
-    cpu.waiting_processes -= 1
 
-    print("Executed process", name, "in", "{0:.2f}".format(execute_time),
+    print("Executed process", p_name, "in", "{0:.2f}".format(execute_time),
           "nanoseconds using", "{0:.2f}".format(execute_time * POWER_CONSUMPTION), "nanowatts.")
+
+    if cpu.num_waiting_processes() > 0:
+        next_process, priority = cpu.remove_waiting_process()
+        next_p_name, next_cycles_rem, next_arrival_time = next_process
+        next_runtime = next_cycles_rem / cpu.clock_speed
+        next_event_data = fel, cpu, next_process
+        next_event = engine.Event(next_event_data, process_handler, EXECUTE_EVENT_TYPE, name=next_p_name)
+        fel.schedule(next_event, fel.now + next_runtime)
+        cpu.available_time = fel.now + next_runtime
+        print("Scheduled process", next_p_name, "to run at t =", fel.now)
 
 
 def input_scheduler(processes, scheduler):
@@ -111,7 +151,7 @@ def input_scheduler(processes, scheduler):
     for process in processes:
         p_name, cycles, arrival_time = process
         event_data = (fel, cpu, process)
-        fel.schedule(engine.Event(event_data, fcfs_scheduler, SCHEDULE_EVENT_TYPE, name=p_name), arrival_time)
+        fel.schedule(engine.Event(event_data, scheduler, SCHEDULE_EVENT_TYPE, name=p_name), arrival_time)
     engine.run_sim(fel)
 
     print("Total wait time:", "{0:.2f}".format(cpu.total_wait_time), "nanoseconds")
@@ -146,9 +186,11 @@ def main():
     if fcfs:
         print("Executing using First Come First Serve (FCFS) scheduling.")
         input_scheduler(processes, fcfs_scheduler)
+        print()
     if sjf:
         print("Executing using Shortest Job First (SJF) scheduling.")
-        pass
+        input_scheduler(processes, sjf_scheduler)
+        print()
     if rr:
         print("Executing using Round Robin (RR) scheduling.")
         pass
